@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 from .clipper import crop_highlights
 from .downloader import download_youtube
 from .highlights import call_muapi_llm, get_highlights
+from .publishing import build_publishing_manifest
 from .qst_scoring import rerank_highlights
 from .remotion_export import build_remotion_props
 from .transcriber import transcribe
@@ -25,6 +26,25 @@ def _attach_render_props(shorts: List[Dict], transcript: Dict) -> List[Dict]:
             item["remotion_props"] = build_remotion_props(item, transcript, video_src)
         enriched.append(item)
     return enriched
+
+
+def _build_result(
+    mode: str,
+    source_video_url: str,
+    transcript: Dict,
+    highlights: List[Dict],
+    shorts: List[Dict],
+    viral_profile: Optional[str],
+) -> Dict:
+    return {
+        "mode": mode,
+        "source_video_url": source_video_url,
+        "transcript": transcript,
+        "highlights": highlights,
+        "shorts": shorts,
+        "viral_profile": viral_profile,
+        "publishing_manifest": build_publishing_manifest(shorts),
+    }
 
 
 def _run_local(
@@ -57,15 +77,7 @@ def _run_local(
     top = sorted(all_highlights, key=lambda h: int(h.get("qst_score", h.get("score", 0))), reverse=True)[:num_clips]
     print(f"[pipeline/local] cropping {len(top)} of {len(all_highlights)} candidates", flush=True)
     shorts = _attach_render_props(crop_highlights_local(source_path, top, aspect_ratio=aspect_ratio), transcript)
-
-    return {
-        "mode": "local",
-        "source_video_url": source_path,
-        "transcript": transcript,
-        "highlights": all_highlights,
-        "shorts": shorts,
-        "viral_profile": viral_profile,
-    }
+    return _build_result("local", source_path, transcript, all_highlights, shorts, viral_profile)
 
 
 def _run_api(
@@ -93,15 +105,7 @@ def _run_api(
     top = sorted(all_highlights, key=lambda h: int(h.get("qst_score", h.get("score", 0))), reverse=True)[:num_clips]
     print(f"[pipeline] cropping {len(top)} of {len(all_highlights)} candidates", flush=True)
     shorts = _attach_render_props(crop_highlights(source_url, top, aspect_ratio=aspect_ratio), transcript)
-
-    return {
-        "mode": "api",
-        "source_video_url": source_url,
-        "transcript": transcript,
-        "highlights": all_highlights,
-        "shorts": shorts,
-        "viral_profile": viral_profile,
-    }
+    return _build_result("api", source_url, transcript, all_highlights, shorts, viral_profile)
 
 
 def generate_shorts(
