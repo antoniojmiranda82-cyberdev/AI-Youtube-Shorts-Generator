@@ -23,9 +23,14 @@ on:
 jobs:
   generate-batch:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
-      MUAPI_API_KEY: ${{ secrets.MUAPI_API_KEY }}
+      LLM_PROVIDER: gemini
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: gemini-2.5-flash
+      LOCAL_WHISPER_MODEL: base
+      LOCAL_WHISPER_DEVICE: cpu
+      LOCAL_OUTPUT_DIR: output
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,21 +40,26 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Validate API key
+      - name: Install FFmpeg
         run: |
-          if [ -z "$MUAPI_API_KEY" ]; then
-            echo "MUAPI_API_KEY repository secret is required for API-mode batch generation."
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install local pipeline dependencies
+        run: pip install -r requirements-local.txt
+
+      - name: Validate Gemini key
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "GEMINI_API_KEY repository secret is required for local Gemini highlight ranking."
             exit 1
           fi
 
-      - name: Generate ranked Shorts batch
+      - name: Generate ranked Shorts batch locally
         run: |
-          mkdir -p artifacts
+          mkdir -p artifacts output
           python main.py "${{ inputs.youtube_url }}" \
-            --mode api \
+            --mode local \
             --num-clips "${{ inputs.num_clips }}" \
             --aspect-ratio 9:16 \
             --format 720 \
@@ -57,13 +67,14 @@ jobs:
             --output-json artifacts/batch-result.json
 
       - name: Save review summary
+        if: success()
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
           p = Path('artifacts/batch-result.json')
           data = json.loads(p.read_text(encoding='utf-8'))
-          lines = ['# QST Real Episode Batch', '']
+          lines = ['# QST Real Episode Batch', '', 'Mode: local + Gemini + faster-whisper', '']
           for i, clip in enumerate(data.get('shorts', []), 1):
               score = clip.get('qst_score', clip.get('score', 'n/a'))
               lines += [
@@ -78,9 +89,18 @@ jobs:
           Path('artifacts/REVIEW.md').write_text('\n'.join(lines), encoding='utf-8')
           PY
 
+      - name: Copy generated clips into artifacts
+        if: success()
+        run: |
+          if [ -d output ]; then
+            cp -R output artifacts/generated-clips
+          fi
+
       - name: Upload batch artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: qst-real-episode-batch
           path: artifacts/
           retention-days: 7
+          if-no-files-found: warn
