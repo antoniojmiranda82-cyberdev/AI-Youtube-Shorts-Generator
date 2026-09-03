@@ -1,0 +1,86 @@
+name: QST Real Episode Batch
+
+on:
+  workflow_dispatch:
+    inputs:
+      youtube_url:
+        description: "YouTube episode URL"
+        required: true
+        default: "https://youtube.com/watch?v=hq5yJHw4Mm0"
+      num_clips:
+        description: "Number of Shorts to generate"
+        required: true
+        default: "10"
+      viral_profile:
+        description: "Ranking profile"
+        required: true
+        default: "comedy"
+        type: choice
+        options:
+          - comedy
+          - general
+
+jobs:
+  generate-batch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      MUAPI_API_KEY: ${{ secrets.MUAPI_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Validate API key
+        run: |
+          if [ -z "$MUAPI_API_KEY" ]; then
+            echo "MUAPI_API_KEY repository secret is required for API-mode batch generation."
+            exit 1
+          fi
+
+      - name: Generate ranked Shorts batch
+        run: |
+          mkdir -p artifacts
+          python main.py "${{ inputs.youtube_url }}" \
+            --mode api \
+            --num-clips "${{ inputs.num_clips }}" \
+            --aspect-ratio 9:16 \
+            --format 720 \
+            --viral-profile "${{ inputs.viral_profile }}" \
+            --output-json artifacts/batch-result.json
+
+      - name: Save review summary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('artifacts/batch-result.json')
+          data = json.loads(p.read_text(encoding='utf-8'))
+          lines = ['# QST Real Episode Batch', '']
+          for i, clip in enumerate(data.get('shorts', []), 1):
+              score = clip.get('qst_score', clip.get('score', 'n/a'))
+              lines += [
+                  f'## #{i} — {clip.get("title", "Untitled")}',
+                  f'- Score: {score}',
+                  f'- Start: {clip.get("start_time")}',
+                  f'- End: {clip.get("end_time")}',
+                  f'- Hook: {clip.get("hook_sentence", "")}',
+                  f'- Clip: {clip.get("clip_url") or clip.get("clip_path") or ""}',
+                  '',
+              ]
+          Path('artifacts/REVIEW.md').write_text('\n'.join(lines), encoding='utf-8')
+          PY
+
+      - name: Upload batch artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qst-real-episode-batch
+          path: artifacts/
+          retention-days: 7
