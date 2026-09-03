@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "scripts": {
     "studio": "remotion studio --no-open",
-    "render": "remotion render src/index.ts QSTShort out/qst-short.mp4"
+    "render": "remotion render src/index.ts QSTShort out/qst-short.mp4",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@remotion/captions": "4.0.506",
