@@ -9,11 +9,18 @@ export type PunchIn = {
   scale?: number;
 };
 
+export type FramingCue = {
+  startMs: number;
+  endMs: number;
+  xPercent: number;
+};
+
 export type QSTShortProps = {
   videoSrc: string;
   hook: string;
   captions: Caption[];
   punchIns?: PunchIn[];
+  framingCues?: FramingCue[];
 };
 
 const getActiveCaption = (captions: Caption[], timeMs: number) =>
@@ -38,12 +45,25 @@ const getPunchScale = (punchIns: PunchIn[], timeMs: number) => {
   });
 };
 
-export const QSTShort: React.FC<QSTShortProps> = ({videoSrc, hook, captions, punchIns = []}) => {
+const getFocusX = (framingCues: FramingCue[], timeMs: number) => {
+  const active = framingCues.find((cue) => timeMs >= cue.startMs && timeMs <= cue.endMs);
+  if (!active) return 50;
+  return Math.max(15, Math.min(85, active.xPercent));
+};
+
+export const QSTShort: React.FC<QSTShortProps> = ({
+  videoSrc,
+  hook,
+  captions,
+  punchIns = [],
+  framingCues = [],
+}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const timeMs = (frame / fps) * 1000;
   const caption = getActiveCaption(captions, timeMs);
   const scale = getPunchScale(punchIns, timeMs);
+  const focusX = getFocusX(framingCues, timeMs);
 
   return (
     <AbsoluteFill style={{backgroundColor: '#050505', overflow: 'hidden'}}>
@@ -53,7 +73,7 @@ export const QSTShort: React.FC<QSTShortProps> = ({videoSrc, hook, captions, pun
           width: '100%',
           height: '100%',
           objectFit: 'cover',
-          objectPosition: 'center center',
+          objectPosition: `${focusX}% center`,
           scale,
         }}
       />
